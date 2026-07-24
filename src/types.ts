@@ -26,3 +26,12 @@ export interface Product {
     createdAt: number;
     lastModifiedAt: number;
 }
+
+export interface CreateShipmentRequest {
+    shippingAddress: Address;
+    products: { sku: string; quantity: number }[];
+}
+
+export interface CreateShipmentResponse {
+    id: string;
+}
