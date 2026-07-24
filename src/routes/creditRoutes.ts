@@ -1,15 +1,35 @@
 import { Router, Request, Response, NextFunction } from "express";
+import * as creditService from "../services/creditService";
 
 export const creditRoutes = Router();
 
 creditRoutes.post("/:customerId/grant", async (req: Request, res: Response, next: NextFunction) => {
-    // Add to customer's balance
+    try {
+        const { amount, note } = req.body;
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return res.status(400).json({ error: "Grant amount must be positive" });
+        }
+        const entry = await creditService.updateCredit(req.params.customerId as string, amount, note);
+        res.json(entry);
+    } catch (err) {
+        next(err);
+    }
 });
 
 creditRoutes.post("/:customerId/deduct", async (req: Request, res: Response, next: NextFunction) => {
-    // Deduct from customer's balance
+    try {
+        const { amount, note } = req.body;
+        if (!Number.isFinite(amount) || amount <= 0) {
+            return res.status(400).json({ error: "Deduction amount must be positive" });
+        }
+        const entry = await creditService.updateCredit(req.params.customerId as string, -amount, note);
+        res.json(entry);
+    } catch (err) {
+        next(err);
+    }
 });
 
 creditRoutes.get("/:customerId/balance", (req: Request, res: Response) => {
-    // Get customer's balance
+    const balance = creditService.getCreditBalance(req.params.customerId as string);
+    res.json({ customerId: req.params.customerId, balance });
 });
