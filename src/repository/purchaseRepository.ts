@@ -26,3 +26,9 @@ export function addRefund(purchaseId: string, refund: RefundRecord): Purchase {
     purchase.status = purchase.refundedAmount >= purchase.totalAmount ? "REFUNDED" : "PARTIALLY_REFUNDED"; 
     return purchase;
 }
+
+export function deleteById(purchaseId: string): boolean {
+    if (!purchases[purchaseId]) return false;
+    delete purchases[purchaseId];
+    return true;
+}

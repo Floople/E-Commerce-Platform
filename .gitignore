@@ -1,2 +1,5 @@
 node_modules/
 dist/
+api_example.json
+specs.pdf
+.DS_Store

@@ -33,3 +33,16 @@ creditRoutes.get("/:customerId/balance", (req: Request, res: Response) => {
     const balance = creditService.getCreditBalance(req.params.customerId as string);
     res.json({ customerId: req.params.customerId, balance });
 });
+
+creditRoutes.get("/:customerId/ledger", (req: Request, res: Response) => {
+    res.json(creditService.getCreditLedger(req.params.customerId as string));
+});
+
+creditRoutes.delete("/entries/:entryId", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        await creditService.deleteCreditEntry(req.params.entryId as string);
+        res.status(204).send();
+    } catch (err) {
+        next(err);
+    }
+});

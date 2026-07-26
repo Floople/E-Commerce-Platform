@@ -28,3 +28,12 @@ purchaseRoutes.post("/:id/refund", async (req: Request, res: Response, next: Nex
         next(err);
     }
 });
+
+purchaseRoutes.delete("/:id", (req: Request, res: Response, next: NextFunction) => {
+    try {
+        purchaseService.deletePurchase(req.params.id as string);
+        res.status(204).send();
+    } catch (err) {
+        next(err);
+    }
+});

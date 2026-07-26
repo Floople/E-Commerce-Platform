@@ -1,17 +1,22 @@
 import * as creditRepository from "../repository/creditRepository";
 import { getCustomer } from "../externalApi/client";
 import { CreditLedgerEntry, CreditReason } from "../types";
+import { withLock } from "../utils/mutex";
 
 export class InsufficientCreditError extends Error {}
+export class CreditError extends Error {}
 
 // Get customer's current credit balance
 export function getCreditBalance(customerId: string): number {
     return creditRepository.getBalance(customerId);
 }
 
-// Updates credit, if amount entered is positive or negative determins what the reasoning is.
-// Attaches Purchase Id if made from a purchase. Errors our if we try to deduct more than we have or
-// an invalid input comes in.
+// Get customer's credit ledger, for audit/historical record keeping purposes.
+export function getCreditLedger(customerId: string): CreditLedgerEntry[] {
+    return creditRepository.getLedger(customerId);
+}
+
+// Locked per customer so concurrency is retained
 export async function updateCredit(
     customerId: string,
     amount: number,
@@ -24,6 +29,16 @@ export async function updateCredit(
         await getCustomer(customerId);
     }
 
+    return withLock(customerId, async () => applyCreditChangeUnlocked(customerId, amount, note, context));
+}
+
+// Only call this while already customer locked
+export function applyCreditChangeUnlocked(
+    customerId: string,
+    amount: number,
+    note?: string,
+    context?: { reason: CreditReason; relatedPurchaseId?: string }
+): CreditLedgerEntry {
     if (amount < 0) {
         const balance = creditRepository.getBalance(customerId);
         if (balance < -amount) throw new InsufficientCreditError("Customer does not have enough credit");
@@ -31,4 +46,12 @@ export async function updateCredit(
 
     const reason = context?.reason ?? (amount > 0 ? "MANUAL_GRANT" : "MANUAL_DEDUCTION");
     return creditRepository.applyCreditChange(customerId, amount, reason, note, context?.relatedPurchaseId);
+}
+export async function deleteCreditEntry(entryId: string): Promise<void> {
+    const entry = creditRepository.findLedgerEntry(entryId);
+    if (!entry) throw new CreditError("Credit ledger entry not found");
+
+    await withLock(entry.customerId, async () => {
+        creditRepository.deleteLedgerEntry(entryId);
+    });
 }

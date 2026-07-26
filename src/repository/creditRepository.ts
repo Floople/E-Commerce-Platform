@@ -37,3 +37,16 @@ export function applyCreditChange(
 export function getLedger(customerId: string): CreditLedgerEntry[] {
     return ledger.filter(entry => entry.customerId === customerId);
 }
+
+export function findLedgerEntry(entryId: string): CreditLedgerEntry | undefined {
+    return ledger.find(entry => entry.id === entryId);
+}
+
+export function deleteLedgerEntry(entryId: string): CreditLedgerEntry | undefined {
+    const index = ledger.findIndex(entry => entry.id === entryId);
+    if (index === -1) return undefined;
+
+    const [removed] = ledger.splice(index, 1);
+    balances[removed.customerId] = (balances[removed.customerId] ?? 0) - removed.amount;
+    return removed;
+}
