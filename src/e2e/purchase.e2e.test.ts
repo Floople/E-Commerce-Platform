@@ -20,7 +20,7 @@ function assertCloseTo(actual: number, expected: number, message: string): void 
 
 // Resets balance to what's needed in tests
 async function setBalance(target: number): Promise<void> {
-    const current = ((await (await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/balance`)).json()) as { balance: number }).balance;
+    const current = ((await (await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/balance`)).json()) as { data: { balance: number } }).data.balance;
     if (current > 0) {
         await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/deduct`, {
             method: "POST",
@@ -63,7 +63,7 @@ test("purchasing a product deducts credit, and refunding it (partially then full
         body: JSON.stringify({ amount: 100 }),
     });
     assert.equal(res.status, 200);
-    let entry = (await res.json()) as CreditLedgerEntry;
+    let entry = ((await res.json()) as { data: CreditLedgerEntry }).data;
     assert.equal(entry.balanceAfter, 100);
 
     res = await fetch(`${baseUrl}/purchases`, {
@@ -72,13 +72,13 @@ test("purchasing a product deducts credit, and refunding it (partially then full
         body: JSON.stringify({ customerId: CUSTOMER_ID, productId: PRODUCT_1, quantity: 2 }),
     });
     assert.equal(res.status, 200);
-    const purchase = (await res.json()) as Purchase;
+    const purchase = ((await res.json()) as { data: Purchase }).data;
     assert.equal(purchase.status, "COMPLETED");
     assert.equal(purchase.totalAmount, 5.98);
     assert.ok(purchase.shipmentId, "purchase should have a shipmentId from CreateShipment");
 
     res = await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/balance`);
-    assertCloseTo((await res.json()).balance, 94.02, "balance after purchase");
+    assertCloseTo((await res.json()).data.balance, 94.02, "balance after purchase");
 
     // refund half of it first
     res = await fetch(`${baseUrl}/purchases/${purchase.id}/refund`, {
@@ -87,12 +87,12 @@ test("purchasing a product deducts credit, and refunding it (partially then full
         body: JSON.stringify({ amount: 2.99 }),
     });
     assert.equal(res.status, 200);
-    let updated = (await res.json()) as Purchase;
+    let updated = ((await res.json()) as { data: Purchase }).data;
     assert.equal(updated.status, "PARTIALLY_REFUNDED");
     assert.equal(updated.refundedAmount, 2.99);
 
     res = await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/balance`);
-    assertCloseTo((await res.json()).balance, 97.01, "balance after partial refund");
+    assertCloseTo((await res.json()).data.balance, 97.01, "balance after partial refund");
 
     // then refund whatever's left (no amount = just refund the rest)
     res = await fetch(`${baseUrl}/purchases/${purchase.id}/refund`, {
@@ -101,15 +101,15 @@ test("purchasing a product deducts credit, and refunding it (partially then full
         body: JSON.stringify({}),
     });
     assert.equal(res.status, 200);
-    updated = (await res.json()) as Purchase;
+    updated = ((await res.json()) as { data: Purchase }).data;
     assert.equal(updated.status, "REFUNDED");
     assert.equal(updated.refundedAmount, 5.98);
 
     res = await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/balance`);
-    assertCloseTo((await res.json()).balance, 100, "balance after full refund");
+    assertCloseTo((await res.json()).data.balance, 100, "balance after full refund");
 
     res = await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`);
-    const purchases = (await res.json()) as Purchase[];
+    const purchases = ((await res.json()) as { data: Purchase[] }).data;
     assert.ok(purchases.some(p => p.id === purchase.id));
 });
 
@@ -121,7 +121,7 @@ test("a purchase is rejected (and never saved) when the customer has insufficien
     });
     assert.equal(res.status, 200);
 
-    const purchasesBefore = (await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as Purchase[];
+    const purchasesBefore = ((await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as { data: Purchase[] }).data;
 
     res = await fetch(`${baseUrl}/purchases`, {
         method: "POST",
@@ -133,16 +133,16 @@ test("a purchase is rejected (and never saved) when the customer has insufficien
     assert.match(body.error, /insufficient credit/i);
 
     res = await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/balance`);
-    assertCloseTo((await res.json()).balance, 1, "balance after failed purchase attempt");
+    assertCloseTo((await res.json()).data.balance, 1, "balance after failed purchase attempt");
 
-    const purchasesAfter = (await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as Purchase[];
+    const purchasesAfter = ((await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as { data: Purchase[] }).data;
     assert.equal(purchasesAfter.length, purchasesBefore.length, "no new purchase should have been saved");
 });
 
 test("concurrent purchases for the same customer don't overdraw the balance", async () => {
     // set balance to exactly enough for one purchase of product 1, not two
     await setBalance(2.99);
-    const purchasesBefore = (await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as Purchase[];
+    const purchasesBefore = ((await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as { data: Purchase[] }).data;
 
     // fire both at once to see if mutex works
     const buy = () =>
@@ -157,15 +157,15 @@ test("concurrent purchases for the same customer don't overdraw the balance", as
     assert.deepEqual(statuses, [200, 400], "exactly one purchase should go through, the other should get rejected");
 
     const balanceRes = await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/balance`);
-    assertCloseTo((await balanceRes.json()).balance, 0, "should land at exactly 0, never negative");
+    assertCloseTo((await balanceRes.json()).data.balance, 0, "should land at exactly 0, never negative");
 
-    const purchasesAfter = (await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as Purchase[];
+    const purchasesAfter = ((await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as { data: Purchase[] }).data;
     assert.equal(purchasesAfter.length, purchasesBefore.length + 1, "only one of the two should've actually been saved");
 });
 
 test("unknown customer or product 404s and doesn't touch credit or purchases", async () => {
-    const balanceBefore = ((await (await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/balance`)).json()) as { balance: number }).balance;
-    const purchasesBefore = (await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as Purchase[];
+    const balanceBefore = ((await (await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/balance`)).json()) as { data: { balance: number } }).data.balance;
+    const purchasesBefore = ((await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as { data: Purchase[] }).data;
 
     // check 404 with non existent customer id
     let res = await fetch(`${baseUrl}/purchases`, {
@@ -183,10 +183,10 @@ test("unknown customer or product 404s and doesn't touch credit or purchases", a
     });
     assert.equal(res.status, 404);
 
-    const balanceAfter = ((await (await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/balance`)).json()) as { balance: number }).balance;
+    const balanceAfter = ((await (await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/balance`)).json()) as { data: { balance: number } }).data.balance;
     assertCloseTo(balanceAfter, balanceBefore, "balance shouldn't move for a purchase that never got this far");
 
-    const purchasesAfter = (await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as Purchase[];
+    const purchasesAfter = ((await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as { data: Purchase[] }).data;
     assert.equal(purchasesAfter.length, purchasesBefore.length, "nothing should get saved for an unknown customer/product");
 });
 
@@ -197,7 +197,7 @@ test("refunding more than what's left on a purchase is rejected", async () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customerId: CUSTOMER_ID, productId: PRODUCT_1, quantity: 1 }), // costs 2.99
     });
-    const purchase = (await res.json()) as Purchase;
+    const purchase = ((await res.json()) as { data: Purchase }).data;
 
     // asking for way more than the purchase even cost should just get rejected
     res = await fetch(`${baseUrl}/purchases/${purchase.id}/refund`, {
@@ -214,7 +214,7 @@ test("refunding more than what's left on a purchase is rejected", async () => {
         body: JSON.stringify({}),
     });
     assert.equal(res.status, 200);
-    assert.equal((await res.json()).status, "REFUNDED");
+    assert.equal((await res.json()).data.status, "REFUNDED");
 
     // there's nothing left to refund now, so this should also get rejected
     res = await fetch(`${baseUrl}/purchases/${purchase.id}/refund`, {
@@ -241,7 +241,7 @@ test("credit ledger keeps an entry for the grant, the purchase, and the refund",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customerId: CUSTOMER_ID, productId: PRODUCT_1, quantity: 1 }), // costs 2.99
     });
-    const purchase = (await res.json()) as Purchase;
+    const purchase = ((await res.json()) as { data: Purchase }).data;
 
     await fetch(`${baseUrl}/purchases/${purchase.id}/refund`, {
         method: "POST",
@@ -249,7 +249,7 @@ test("credit ledger keeps an entry for the grant, the purchase, and the refund",
         body: JSON.stringify({}),
     });
 
-    const ledger = (await (await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/ledger`)).json()) as CreditLedgerEntry[];
+    const ledger = ((await (await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/ledger`)).json()) as { data: CreditLedgerEntry[] }).data;
 
     const grantEntry = ledger.find(e => e.reason === "MANUAL_GRANT" && e.note === grantNote);
     assert.ok(grantEntry, "grant should show up in the ledger");
