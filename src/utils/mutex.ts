@@ -1,10 +1,34 @@
-// Per-key lock so concurrent requests for the same customer don't race each other across
-// await points (e.g. two purchases both reading the balance before either deducts).
-const queues = new Map<string, Promise<unknown>>();
+import { Mutex } from "async-mutex";
 
-export function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
-    const previous = queues.get(key) ?? Promise.resolve();
-    const run = previous.then(fn, fn);
-    queues.set(key, run.catch(() => undefined));
-    return run;
+// one mutex per key, refCount tracks how many in-flight withLock() calls are relying on this exact entry.
+interface Entry { mutex: Mutex; refCount: number; }
+const mutexes = new Map<string, Entry>();
+
+// Creates or grabs entry (making one if needed) and claims it. 
+// Increment refcount immediately so another call does not create a duplicate entry.
+function acquire(key: string): Entry {
+    let entry = mutexes.get(key);
+    if (!entry) {
+        entry = { mutex: new Mutex(), refCount: 0 };
+        mutexes.set(key, entry);
+    }
+    entry.refCount++;
+    return entry;
 }
+
+// Once entries are empty we release the muetex
+function release(key: string, entry: Entry): void {
+    entry.refCount--;
+    if (entry.refCount === 0) mutexes.delete(key);
+}
+
+export async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+    const entry = acquire(key);
+    try {
+        return await entry.mutex.runExclusive(fn);
+    } finally {
+        // If fn throws we still need to release the key
+        release(key, entry);
+    }
+}
+
