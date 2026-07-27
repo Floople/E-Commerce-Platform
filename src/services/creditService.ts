@@ -47,6 +47,7 @@ export function applyCreditChangeUnlocked(
     const reason = context?.reason ?? (amount > 0 ? "MANUAL_GRANT" : "MANUAL_DEDUCTION");
     return creditRepository.applyCreditChange(customerId, amount, reason, note, context?.relatedPurchaseId);
 }
+
 export async function deleteCreditEntry(entryId: string): Promise<void> {
     const entry = creditRepository.findLedgerEntry(entryId);
     if (!entry) throw new CreditError("Credit ledger entry not found");

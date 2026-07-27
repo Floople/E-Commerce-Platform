@@ -74,4 +74,12 @@ export interface Purchase {
     shipmentId: string;
     createdAt: number;
     refunds: RefundRecord[];
+    promoCode?: string;
+}
+
+export interface PromoCode {
+    code: string;
+    discountType: "PERCENT" | "FIXED";
+    discountValue: number;
+    expiresAt?: number; // if null, then valid forever
 }

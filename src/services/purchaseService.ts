@@ -1,11 +1,13 @@
 import crypto from "crypto";
 import { getCustomer, getProduct, createShipment, ExternalApiError } from "../externalApi/client";
 import * as purchaseRepository from "../repository/purchaseRepository";
+import * as promoRepository from "../repository/promoRepository";
 import * as creditService from "./creditService";
-import { Purchase } from "../types";
+import { Purchase, PromoCode } from "../types";
 import { withLock } from "../utils/mutex";
 
 export class PurchaseError extends Error {}
+export class InvalidPromoCodeError extends PurchaseError {}
 
 // Rounds to 2 decimals, half up (0.005 -> 0.01). The EPSILON fudge avoids floating point
 // weirdness like 1.005 * 100 === 100.49999999999999.
@@ -13,14 +15,35 @@ function roundToTwoDecimals(value: number): number {
     return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-export async function purchaseProduct(customerId: string, productId: string, quantity: number): Promise<Purchase> {
+export async function purchaseProduct(
+    customerId: string,
+    productId: string,
+    quantity: number,
+    promoCode?: string
+): Promise<Purchase> {
     if (!Number.isFinite(quantity) || quantity <= 0) throw new PurchaseError("Quantity must be positive");
+
+    // checking if promo code exists and if it has an expiration date, check if it is expired or not.
+    // If they entered a promo code and it is inavlid or expired, we do not want the purchase to go through
+    let promo: PromoCode | undefined;
+    if (promoCode) {
+        promo = promoRepository.findByCode(promoCode);
+        if (!promo) throw new InvalidPromoCodeError(`Promo code "${promoCode}" is invalid`);
+        if (promo.expiresAt !== undefined && promo.expiresAt < Date.now()) {
+            throw new InvalidPromoCodeError(`Promo code "${promoCode}" has expired`);
+        }
+    }
 
     const customer = await getCustomer(customerId);
     const product = await getProduct(productId);
 
 
-    const totalAmount = roundToTwoDecimals(product.price * quantity);
+    const rawTotal = product.price * quantity;
+    const discounted =
+        promo?.discountType === "PERCENT" ? rawTotal * (1 - promo.discountValue / 100)
+        : promo?.discountType === "FIXED" ? rawTotal - promo.discountValue
+        : rawTotal;
+    const totalAmount = roundToTwoDecimals(Math.max(discounted, 0));
 
     // Lock per customer so a concurrent purchase/refund can't sneak in between the balance
     // check and the deduction below and overdraw the account.
@@ -57,6 +80,7 @@ export async function purchaseProduct(customerId: string, productId: string, qua
             shipmentId,
             createdAt: Date.now(),
             refunds: [],
+            promoCode,
         };
 
         purchaseRepository.save(purchase);

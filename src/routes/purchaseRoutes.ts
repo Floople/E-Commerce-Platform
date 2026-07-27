@@ -5,8 +5,8 @@ export const purchaseRoutes = Router();
 
 purchaseRoutes.post("/", async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { customerId, productId, quantity } = req.body;
-        const purchase = await purchaseService.purchaseProduct(customerId, productId, quantity);
+        const { customerId, productId, quantity, promoCode } = req.body;
+        const purchase = await purchaseService.purchaseProduct(customerId, productId, quantity, promoCode);
         res.json(purchase);
     } catch (err) {
         next(err);
