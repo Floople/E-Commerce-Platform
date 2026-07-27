@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc -p .",
+    "test": "tsc -p . && node --test dist/e2e/purchase.e2e.test.js"
   },
   "keywords": [],
   "author": "",
