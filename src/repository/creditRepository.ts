@@ -10,6 +10,7 @@ export function getBalance(customerId: string): number {
     return balances[customerId] ?? 0;
 }
 
+// Creates new credit entry in Credit Ledger Entry, and changes the customer's current balance
 export function applyCreditChange(
     customerId: string,
     amount: number,
@@ -34,14 +35,17 @@ export function applyCreditChange(
     return entry;
 }
 
+// Get customer's credit history
 export function getLedger(customerId: string): CreditLedgerEntry[] {
     return ledger.filter(entry => entry.customerId === customerId);
 }
 
+// Get specific credit entry
 export function findLedgerEntry(entryId: string): CreditLedgerEntry | undefined {
     return ledger.find(entry => entry.id === entryId);
 }
 
+// Delete specific ledger entry, only for manual debugging
 export function deleteLedgerEntry(entryId: string): CreditLedgerEntry | undefined {
     const index = ledger.findIndex(entry => entry.id === entryId);
     if (index === -1) return undefined;
