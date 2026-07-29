@@ -6,13 +6,16 @@ import { withLock } from "../utils/mutex";
 export class InsufficientCreditError extends Error {}
 export class CreditError extends Error {}
 
-// Get customer's current credit balance
-export function getCreditBalance(customerId: string): number {
+// Get customer's current credit balance. Validates the customer actually exists first,
+// so an unknown customerId 404s instead of silently coming back with a balance of 0.
+export async function getCreditBalance(customerId: string): Promise<number> {
+    await getCustomer(customerId);
     return creditRepository.getBalance(customerId);
 }
 
 // Get customer's credit ledger, for audit/historical record keeping purposes.
-export function getCreditLedger(customerId: string): CreditLedgerEntry[] {
+export async function getCreditLedger(customerId: string): Promise<CreditLedgerEntry[]> {
+    await getCustomer(customerId);
     return creditRepository.getLedger(customerId);
 }
 

@@ -48,7 +48,7 @@ before(async () => {
     const { server: internalApp } = await import("../server");
     internalServerHandle = internalApp.listen(0);
     await new Promise<void>(resolve => internalServerHandle.once("listening", resolve));
-    baseUrl = `http://localhost:${(internalServerHandle.address() as AddressInfo).port}`;
+    baseUrl = `http://localhost:${(internalServerHandle.address() as AddressInfo).port}/v1`;
 });
 
 after(async () => {
@@ -262,4 +262,39 @@ test("credit ledger keeps an entry for the grant, the purchase, and the refund",
     const refundEntry = ledger.find(e => e.reason === "REFUND" && e.relatedPurchaseId === purchase.id);
     assert.ok(refundEntry, "refund should show up in the ledger too, tied to the same purchase");
     assert.equal(refundEntry?.amount, 2.99);
+});
+
+test("a valid promo code discounts the purchase, an invalid one is rejected and never saved", async () => {
+    await setBalance(100);
+    const purchasesBefore = ((await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as { data: Purchase[] }).data;
+
+    // SAVE10 = 10% off, product 1 x2 costs 5.98 -> 5.38 after discount
+    let res = await fetch(`${baseUrl}/purchases`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: CUSTOMER_ID, productId: PRODUCT_1, quantity: 2, promoCode: "save10" }),
+    });
+    assert.equal(res.status, 200);
+    const purchase = ((await res.json()) as { data: Purchase }).data;
+    assert.equal(purchase.totalAmount, 5.38);
+    assert.equal(purchase.promoCode, "save10");
+
+    res = await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/balance`);
+    assertCloseTo((await res.json()).data.balance, 94.62, "balance should reflect the discounted total, not the full price");
+
+    // a bogus promo code should reject the purchase entirely, nothing saved or deducted
+    res = await fetch(`${baseUrl}/purchases`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customerId: CUSTOMER_ID, productId: PRODUCT_1, quantity: 1, promoCode: "NOT-A-REAL-CODE" }),
+    });
+    assert.equal(res.status, 400);
+    const body = (await res.json()) as { error: string };
+    assert.match(body.error, /invalid/i);
+
+    res = await fetch(`${baseUrl}/credits/${CUSTOMER_ID}/balance`);
+    assertCloseTo((await res.json()).data.balance, 94.62, "balance shouldn't move for a rejected promo code");
+
+    const purchasesAfter = ((await (await fetch(`${baseUrl}/purchases?customerId=${CUSTOMER_ID}`)).json()) as { data: Purchase[] }).data;
+    assert.equal(purchasesAfter.length, purchasesBefore.length + 1, "only the valid-promo purchase should've been saved");
 });

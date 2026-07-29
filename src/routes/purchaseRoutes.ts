@@ -6,7 +6,7 @@ export const purchaseRoutes = Router();
 
 purchaseRoutes.post("/", async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { customerId, productId, quantity, promoCode } = req.body;
+        const { customerId, productId, quantity, promoCode } = req.body ?? {};
         const purchase = await purchaseService.purchaseProduct(customerId, productId, quantity, promoCode);
         sendData(res, purchase);
     } catch (err) {
@@ -22,7 +22,7 @@ purchaseRoutes.get("/", (req: Request, res: Response) => {
 
 purchaseRoutes.post("/:id/refund", async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { amount, note } = req.body;
+        const { amount, note } = req.body ?? {};
         const purchase = await purchaseService.refundPurchase(req.params.id as string, amount, note);
         sendData(res, purchase);
     } catch (err) {

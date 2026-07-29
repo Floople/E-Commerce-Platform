@@ -2,12 +2,14 @@ import crypto from "crypto";
 import { getCustomer, getProduct, createShipment, ExternalApiError } from "../externalApi/client";
 import * as purchaseRepository from "../repository/purchaseRepository";
 import * as promoRepository from "../repository/promoRepository";
+import * as creditRepository from "../repository/creditRepository";
 import * as creditService from "./creditService";
 import { Purchase, PromoCode } from "../types";
 import { withLock } from "../utils/mutex";
 
 export class PurchaseError extends Error {}
 export class InvalidPromoCodeError extends PurchaseError {}
+export class PurchaseNotFoundError extends PurchaseError {}
 
 // Rounds to 2 decimals, half up (0.005 -> 0.01). The EPSILON fudge avoids floating point
 // weirdness like 1.005 * 100 === 100.49999999999999.
@@ -21,7 +23,7 @@ export async function purchaseProduct(
     quantity: number,
     promoCode?: string
 ): Promise<Purchase> {
-    if (!Number.isFinite(quantity) || quantity <= 0) throw new PurchaseError("Quantity must be positive");
+    if (!Number.isInteger(quantity) || quantity <= 0) throw new PurchaseError("Quantity must be a positive whole number");
 
     // checking if promo code exists and if it has an expiration date, check if it is expired or not.
     // If they entered a promo code and it is inavlid or expired, we do not want the purchase to go through
@@ -49,7 +51,7 @@ export async function purchaseProduct(
     // check and the deduction below and overdraw the account.
     return withLock(customerId, async () => {
         // Checks if valid Purchase before creating Shipment, since the opposite is specified.
-        const balance = creditService.getCreditBalance(customerId);
+        const balance = creditRepository.getBalance(customerId);
         if (balance < totalAmount) {
             throw new PurchaseError("Insufficient credit balance");
         }
@@ -98,11 +100,11 @@ export function listPurchases(customerId: string): Purchase[] {
 // same reason as purchaseProduct.
 export async function refundPurchase(purchaseId: string, amount?: number, note?: string): Promise<Purchase> {
     const purchase = purchaseRepository.findById(purchaseId);
-    if (!purchase) throw new PurchaseError("Purchase not found");
+    if (!purchase) throw new PurchaseNotFoundError("Purchase not found");
 
     return withLock(purchase.customerId, async () => {
         const remainingRefundable = roundToTwoDecimals(purchase.totalAmount - purchase.refundedAmount);
-        const refundAmount = amount !== undefined ? roundToTwoDecimals(amount) : remainingRefundable;
+        const refundAmount = amount !== undefined ? roundToTwoDecimals(amount) : remainingRefundable; // If amount is not specified then refunds full remaining amount
 
         if (!Number.isFinite(refundAmount) || refundAmount <= 0 || refundAmount > remainingRefundable) {
             throw new PurchaseError(`Refund amount must be between 0 and ${remainingRefundable}`);
@@ -125,5 +127,5 @@ export async function refundPurchase(purchaseId: string, amount?: number, note?:
 // normal flows.
 export function deletePurchase(purchaseId: string): void {
     const deleted = purchaseRepository.deleteById(purchaseId);
-    if (!deleted) throw new PurchaseError("Purchase not found");
+    if (!deleted) throw new PurchaseNotFoundError("Purchase not found");
 }

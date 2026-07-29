@@ -6,7 +6,7 @@ export const creditRoutes = Router();
 
 creditRoutes.post("/:customerId/grant", async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { amount, note } = req.body;
+        const { amount, note } = req.body ?? {};
         if (!Number.isFinite(amount) || amount <= 0) {
             return sendError(res, 400, "Grant amount must be positive");
         }
@@ -19,7 +19,7 @@ creditRoutes.post("/:customerId/grant", async (req: Request, res: Response, next
 
 creditRoutes.post("/:customerId/deduct", async (req: Request, res: Response, next: NextFunction) => {
     try {
-        const { amount, note } = req.body;
+        const { amount, note } = req.body ?? {};
         if (!Number.isFinite(amount) || amount <= 0) {
             return sendError(res, 400, "Deduction amount must be positive");
         }
@@ -30,13 +30,22 @@ creditRoutes.post("/:customerId/deduct", async (req: Request, res: Response, nex
     }
 });
 
-creditRoutes.get("/:customerId/balance", (req: Request, res: Response) => {
-    const balance = creditService.getCreditBalance(req.params.customerId as string);
-    sendData(res, { customerId: req.params.customerId, balance });
+creditRoutes.get("/:customerId/balance", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const balance = await creditService.getCreditBalance(req.params.customerId as string);
+        sendData(res, { customerId: req.params.customerId, balance });
+    } catch (err) {
+        next(err);
+    }
 });
 
-creditRoutes.get("/:customerId/ledger", (req: Request, res: Response) => {
-    sendData(res, creditService.getCreditLedger(req.params.customerId as string));
+creditRoutes.get("/:customerId/ledger", async (req: Request, res: Response, next: NextFunction) => {
+    try {
+        const ledger = await creditService.getCreditLedger(req.params.customerId as string);
+        sendData(res, ledger);
+    } catch (err) {
+        next(err);
+    }
 });
 
 creditRoutes.delete("/entries/:entryId", async (req: Request, res: Response, next: NextFunction) => {
